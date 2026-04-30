@@ -15,7 +15,6 @@ import android.widget.Button;
 import android.widget.EditText;
 import android.widget.GridLayout;
 import android.widget.LinearLayout;
-import android.widget.NumberPicker;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -227,40 +226,184 @@ public final class MainActivity extends Activity {
     }
 
     private void showMonthYearPicker() {
-        LinearLayout pickerLayout = horizontal();
-        pickerLayout.setPadding(dp(18), dp(10), dp(18), 0);
-        pickerLayout.setGravity(Gravity.CENTER);
+        LocalDate selectedDate = state.getSelectedDate();
+        final int[] selectedDay = {selectedDate.getDayOfMonth()};
+        final int[] selectedMonth = {selectedDate.getMonthValue()};
+        final int[] selectedYear = {selectedDate.getYear()};
 
-        NumberPicker monthPicker = new NumberPicker(this);
-        String[] months = new String[]{
-                "Janeiro", "Fevereiro", "Marco", "Abril", "Maio", "Junho",
-                "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
+        LinearLayout pickerLayout = vertical();
+        pickerLayout.setPadding(dp(18), dp(14), dp(18), dp(16));
+        pickerLayout.setBackground(cardBackground(Color.WHITE, Color.WHITE, 0, dp(22)));
+
+        TextView helper = new TextView(this);
+        helper.setText("Escolha uma data");
+        helper.setTextColor(color(R.color.muted));
+        helper.setTextSize(14);
+        helper.setGravity(Gravity.CENTER);
+        helper.setPadding(0, 0, 0, dp(10));
+        pickerLayout.addView(helper);
+
+        LinearLayout fields = horizontal();
+        fields.setGravity(Gravity.CENTER);
+        fields.setPadding(0, dp(4), 0, dp(16));
+
+        DateSpinnerColumn dayColumn = new DateSpinnerColumn("DD", dp(78));
+        DateSpinnerColumn monthColumn = new DateSpinnerColumn("MM", dp(78));
+        DateSpinnerColumn yearColumn = new DateSpinnerColumn("YYYY", dp(118));
+
+        LinearLayout.LayoutParams dayParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        );
+        dayParams.setMargins(dp(6), 0, dp(6), 0);
+        fields.addView(dayColumn.root, dayParams);
+
+        LinearLayout.LayoutParams monthParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        );
+        monthParams.setMargins(dp(6), 0, dp(6), 0);
+        fields.addView(monthColumn.root, monthParams);
+
+        LinearLayout.LayoutParams yearParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        );
+        yearParams.setMargins(dp(6), 0, dp(6), 0);
+        fields.addView(yearColumn.root, yearParams);
+        pickerLayout.addView(fields);
+
+        Button goButton = baseButton("Go");
+        goButton.setTextSize(20);
+        goButton.setTextColor(Color.WHITE);
+        goButton.setBackground(cardBackground(color(R.color.accent), color(R.color.accent), 0, dp(28)));
+        LinearLayout.LayoutParams goParams = new LinearLayout.LayoutParams(dp(164), dp(58));
+        goParams.gravity = Gravity.CENTER_HORIZONTAL;
+        pickerLayout.addView(goButton, goParams);
+
+        final Runnable[] updateDateColumns = new Runnable[1];
+        updateDateColumns[0] = () -> {
+            fixSelectedDay(selectedDay, selectedMonth, selectedYear);
+            dayColumn.setValue(String.format(Locale.ROOT, "%02d", selectedDay[0]));
+            monthColumn.setValue(String.format(Locale.ROOT, "%02d", selectedMonth[0]));
+            yearColumn.setValue(String.valueOf(selectedYear[0]));
         };
-        monthPicker.setMinValue(1);
-        monthPicker.setMaxValue(12);
-        monthPicker.setDisplayedValues(months);
-        monthPicker.setValue(state.getVisibleMonth().getMonthValue());
-        monthPicker.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
 
-        NumberPicker yearPicker = new NumberPicker(this);
-        int currentYear = LocalDate.now().getYear();
-        yearPicker.setMinValue(currentYear - 80);
-        yearPicker.setMaxValue(currentYear + 80);
-        yearPicker.setValue(state.getVisibleMonth().getYear());
-        yearPicker.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        dayColumn.setUpAction(() -> {
+            int maxDay = YearMonth.of(selectedYear[0], selectedMonth[0]).lengthOfMonth();
+            selectedDay[0] = selectedDay[0] == maxDay ? 1 : selectedDay[0] + 1;
+            updateDateColumns[0].run();
+        });
+        dayColumn.setDownAction(() -> {
+            int maxDay = YearMonth.of(selectedYear[0], selectedMonth[0]).lengthOfMonth();
+            selectedDay[0] = selectedDay[0] == 1 ? maxDay : selectedDay[0] - 1;
+            updateDateColumns[0].run();
+        });
 
-        pickerLayout.addView(monthPicker);
-        pickerLayout.addView(yearPicker);
+        monthColumn.setUpAction(() -> {
+            selectedMonth[0] = selectedMonth[0] == 12 ? 1 : selectedMonth[0] + 1;
+            updateDateColumns[0].run();
+        });
+        monthColumn.setDownAction(() -> {
+            selectedMonth[0] = selectedMonth[0] == 1 ? 12 : selectedMonth[0] - 1;
+            updateDateColumns[0].run();
+        });
 
-        new AlertDialog.Builder(this)
-                .setTitle("Escolher mes e ano")
+        yearColumn.setUpAction(() -> {
+            selectedYear[0] = selectedYear[0] == 2100 ? 1900 : selectedYear[0] + 1;
+            updateDateColumns[0].run();
+        });
+        yearColumn.setDownAction(() -> {
+            selectedYear[0] = selectedYear[0] == 1900 ? 2100 : selectedYear[0] - 1;
+            updateDateColumns[0].run();
+        });
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
                 .setView(pickerLayout)
-                .setNegativeButton("Cancelar", null)
-                .setPositiveButton("Aplicar", (dialog, which) -> {
-                    state.goToMonth(YearMonth.of(yearPicker.getValue(), monthPicker.getValue()));
-                    render();
-                })
-                .show();
+                .create();
+
+        goButton.setOnClickListener(view -> {
+            LocalDate date = LocalDate.of(selectedYear[0], selectedMonth[0], selectedDay[0]);
+            state.selectDate(date);
+            render();
+            dialog.dismiss();
+        });
+
+        updateDateColumns[0].run();
+        dialog.show();
+    }
+
+    private void fixSelectedDay(int[] selectedDay, int[] selectedMonth, int[] selectedYear) {
+        int maxDay = YearMonth.of(selectedYear[0], selectedMonth[0]).lengthOfMonth();
+        if (selectedDay[0] > maxDay) {
+            selectedDay[0] = maxDay;
+        }
+    }
+
+    private final class DateSpinnerColumn {
+        private final LinearLayout root;
+        private final TextView valueView;
+        private Runnable upAction;
+        private Runnable downAction;
+
+        private DateSpinnerColumn(String title, int valueWidth) {
+            root = vertical();
+            root.setGravity(Gravity.CENTER);
+
+            TextView titleView = new TextView(MainActivity.this);
+            titleView.setText(title);
+            titleView.setTextColor(color(R.color.muted));
+            titleView.setTextSize(14);
+            titleView.setTypeface(Typeface.DEFAULT_BOLD);
+            titleView.setGravity(Gravity.CENTER);
+            root.addView(titleView, new LinearLayout.LayoutParams(valueWidth, dp(24)));
+
+            TextView upButton = arrowText("▲");
+            upButton.setOnClickListener(view -> {
+                if (upAction != null) {
+                    upAction.run();
+                }
+            });
+            root.addView(upButton, new LinearLayout.LayoutParams(valueWidth, dp(28)));
+
+            valueView = new TextView(MainActivity.this);
+            valueView.setTextColor(color(R.color.ink));
+            valueView.setTextSize(28);
+            valueView.setGravity(Gravity.CENTER);
+            valueView.setTypeface(Typeface.DEFAULT);
+            valueView.setBackground(cardBackground(Color.WHITE, color(R.color.accent), dp(2), dp(14)));
+            root.addView(valueView, new LinearLayout.LayoutParams(valueWidth, dp(64)));
+
+            TextView downButton = arrowText("▼");
+            downButton.setOnClickListener(view -> {
+                if (downAction != null) {
+                    downAction.run();
+                }
+            });
+            root.addView(downButton, new LinearLayout.LayoutParams(valueWidth, dp(28)));
+        }
+
+        private TextView arrowText(String value) {
+            TextView arrow = new TextView(MainActivity.this);
+            arrow.setText(value);
+            arrow.setTextColor(color(R.color.muted));
+            arrow.setTextSize(15);
+            arrow.setTypeface(Typeface.DEFAULT_BOLD);
+            arrow.setGravity(Gravity.CENTER);
+            return arrow;
+        }
+
+        private void setValue(String value) {
+            valueView.setText(value);
+        }
+
+        private void setUpAction(Runnable action) {
+            upAction = action;
+        }
+
+        private void setDownAction(Runnable action) {
+            downAction = action;
+        }
     }
 
     private void render() {
